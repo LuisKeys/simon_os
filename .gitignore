@@ -1,0 +1,23 @@
+# Go build artifacts
+/bin/
+/dist/
+*.exe
+*.out
+*.test
+
+# Coverage and profiling
+*.coverprofile
+coverage.out
+cpu.prof
+mem.prof
+
+# Local runtime data
+/data/
+*.db
+*.db-shm
+*.db-wal
+
+# Editor and OS noise
+.DS_Store
+.idea/
+.vscode/

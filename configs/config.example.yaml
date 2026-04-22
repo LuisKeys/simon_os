@@ -1,0 +1,14 @@
+model:
+  default: openai
+  fallback: local
+
+memory:
+  type: sqlite
+  path: ./data/memory.db
+
+security:
+  require_approval: true
+  allow_shell: false
+
+workspace:
+  root: .
