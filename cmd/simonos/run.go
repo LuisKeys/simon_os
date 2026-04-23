@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"simonos/internal/agent"
 	"simonos/internal/config"
@@ -137,14 +138,22 @@ func buildRuntime(configPath string) (*config.Config, runtimeDeps, error) {
 	}
 	combined := memory.NewCombinedStore(shortTerm, longTerm)
 
-	router := model.NewRouter(
-		map[string]model.ModelProvider{
-			cfg.Model.Default:  model.NewOpenAIProvider(cfg.Model.Default),
-			cfg.Model.Fallback: model.NewOpenAIProvider(cfg.Model.Fallback),
-		},
-		cfg.Model.Default,
-		cfg.Model.Fallback,
-	)
+	// Construct Ollama providers (local) when configured, otherwise fall back to stub OpenAI provider
+	providers := map[string]model.ModelProvider{}
+	// primary
+	if strings.ToLower(cfg.Model.APIType) == "ollama" || cfg.Model.APIType == "" {
+		providers[cfg.Model.Default] = model.NewOllamaProvider(cfg.Model.Host, cfg.Model.ModelID, cfg.Model.TimeoutSeconds, cfg.Model.UseCLI)
+	} else {
+		providers[cfg.Model.Default] = model.NewOpenAIProvider(cfg.Model.Default)
+	}
+	// fallback
+	if strings.ToLower(cfg.Model.APIType) == "ollama" || cfg.Model.APIType == "" {
+		providers[cfg.Model.Fallback] = model.NewOllamaProvider(cfg.Model.Host, cfg.Model.ModelID, cfg.Model.TimeoutSeconds, cfg.Model.UseCLI)
+	} else {
+		providers[cfg.Model.Fallback] = model.NewOpenAIProvider(cfg.Model.Fallback)
+	}
+
+	router := model.NewRouter(providers, cfg.Model.Default, cfg.Model.Fallback)
 
 	policies := guardrails.NewPolicyEngine(cfg.Security.RequireApproval)
 	engine := agent.NewEngine(executor, combined, router, policies, bus)

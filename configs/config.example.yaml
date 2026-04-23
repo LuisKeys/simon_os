@@ -1,6 +1,11 @@
 model:
-  default: openai
+  default: ollama
   fallback: local
+  api_type: ollama
+  host: http://localhost:11434
+  model_id: lfm2:24b
+  timeout_seconds: 60
+  use_cli: false
 
 memory:
   type: sqlite

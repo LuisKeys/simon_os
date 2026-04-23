@@ -11,6 +11,12 @@ type Config struct {
 	Model struct {
 		Default  string `yaml:"default"`
 		Fallback string `yaml:"fallback"`
+		// Ollama/local provider settings
+		APIType        string `yaml:"api_type"`
+		Host           string `yaml:"host"`
+		ModelID        string `yaml:"model_id"`
+		TimeoutSeconds int    `yaml:"timeout_seconds"`
+		UseCLI         bool   `yaml:"use_cli"`
 	} `yaml:"model"`
 	Memory struct {
 		Type string `yaml:"type"`

@@ -117,6 +117,22 @@ func (e *Engine) execute(ctx context.Context, task Task) (string, error) {
 
 	provider := e.router.SelectModel(task.Input)
 	prompt := buildPrompt(task.Input)
+
+	// Try streaming if provider supports it; otherwise fall back to sync Generate
+	streamCh, err := provider.Stream(ctx, prompt)
+	if err == nil && streamCh != nil {
+		var builder strings.Builder
+		for chunk := range streamCh {
+			// publish incremental token events
+			e.eventBus.Publish(events.Event{Type: events.EventTokenStream, Payload: map[string]interface{}{"task_id": task.ID, "chunk": chunk}})
+			builder.WriteString(chunk)
+		}
+		result := builder.String()
+		_ = e.memory.StoreEmbedding(ctx, result, map[string]interface{}{"task_id": task.ID})
+		return result, nil
+	}
+
+	// fallback to sync generation
 	result, err := provider.Generate(ctx, prompt)
 	if err != nil {
 		return "", err

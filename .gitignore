@@ -17,7 +17,11 @@ mem.prof
 *.db-shm
 *.db-wal
 
+# Delve / debug binaries
+__debug_bin*
+
 # Editor and OS noise
 .DS_Store
 .idea/
 .vscode/
+
