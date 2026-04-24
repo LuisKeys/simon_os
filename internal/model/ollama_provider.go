@@ -1,7 +1,6 @@
 package model
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -13,6 +12,11 @@ import (
 	"strings"
 	"time"
 )
+
+type ollamaGenerateResponse struct {
+	Response string `json:"response"`
+	Done     bool   `json:"done"`
+}
 
 // OllamaProvider implements ModelProvider using a local Ollama daemon or the ollama CLI as fallback.
 type OllamaProvider struct {
@@ -87,13 +91,11 @@ func (p *OllamaProvider) generateHTTP(ctx context.Context, prompt string) (strin
 		body, _ := io.ReadAll(resp.Body)
 		return "", fmt.Errorf("ollama HTTP error: %d %s", resp.StatusCode, string(body))
 	}
-	var parsed struct {
-		Output string `json:"output"`
-	}
+	var parsed ollamaGenerateResponse
 	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
 		return "", err
 	}
-	return parsed.Output, nil
+	return parsed.Response, nil
 }
 
 func (p *OllamaProvider) streamHTTP(ctx context.Context, prompt string) (<-chan string, error) {
@@ -123,31 +125,29 @@ func (p *OllamaProvider) streamHTTP(ctx context.Context, prompt string) (<-chan 
 	go func() {
 		defer resp.Body.Close()
 		defer close(out)
-		scanner := bufio.NewScanner(resp.Body)
-		for scanner.Scan() {
-			line := scanner.Text()
-			// try parse JSON chunk
-			var chunk map[string]interface{}
-			if err := json.Unmarshal([]byte(line), &chunk); err == nil {
-				if t, ok := chunk["token"].(string); ok {
-					out <- t
-					continue
+		decoder := json.NewDecoder(resp.Body)
+		for {
+			var chunk ollamaGenerateResponse
+			if err := decoder.Decode(&chunk); err != nil {
+				if errors.Is(err, io.EOF) {
+					return
 				}
-				if o, ok := chunk["output"].(string); ok {
-					out <- o
-					continue
-				}
+				out <- fmt.Sprintf("error: %v", err)
+				return
 			}
-			// fallback: emit raw line
-			out <- line
+
+			if chunk.Response != "" {
+				out <- chunk.Response
+			}
+			if chunk.Done {
+				return
+			}
+
 			select {
 			case <-ctx.Done():
 				return
 			default:
 			}
-		}
-		if err := scanner.Err(); err != nil && !errors.Is(err, io.EOF) {
-			out <- fmt.Sprintf("error: %v", err)
 		}
 	}()
 	return out, nil
@@ -177,17 +177,22 @@ func (p *OllamaProvider) streamCLI(ctx context.Context, prompt string, out chan<
 	if err := cmd.Start(); err != nil {
 		return err
 	}
-	reader := bufio.NewReader(stdout)
+	reader := io.Reader(stdout)
+	decoder := json.NewDecoder(reader)
 	for {
-		line, err := reader.ReadString('\n')
-		if line != "" {
-			out <- strings.TrimRight(line, "\n")
-		}
+		var chunk ollamaGenerateResponse
+		err := decoder.Decode(&chunk)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				break
 			}
 			return err
+		}
+		if chunk.Response != "" {
+			out <- chunk.Response
+		}
+		if chunk.Done {
+			break
 		}
 		select {
 		case <-ctx.Done():
